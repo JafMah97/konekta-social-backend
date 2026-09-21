@@ -39,6 +39,7 @@ type FollowerOut = {
 const getFollowersRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     '/followers/:userId',
+    { preHandler: fastify.authenticateOptional },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const req = request as AuthenticatedRequest
       const currentUserId = req.user?.id

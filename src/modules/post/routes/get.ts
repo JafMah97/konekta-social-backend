@@ -22,6 +22,7 @@ interface RequestWithOptionalUser extends FastifyRequest {
 const getPostRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     '/get/:postId',
+    { preHandler: fastify.authenticateOptional },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const req = request as RequestWithOptionalUser
       const { postId: rawPostId } = req.params

@@ -120,3 +120,19 @@ export const verifyEmailSchema = z.object({
   token: z.string().optional(),
   code: z.string().optional(),
 })
+
+// Follow / unfollow a user
+export const followUserParamsSchema = z.object({
+  userId: z.cuid('Invalid user ID'),
+})
+
+// Accept / reject a follow request
+export const followRequestParamsSchema = z.object({
+  requestId: z.cuid('Invalid request ID'),
+})
+
+// Incoming follow requests (paginated)
+export const listFollowRequestsSchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+})

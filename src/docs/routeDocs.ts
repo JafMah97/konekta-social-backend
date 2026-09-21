@@ -35,6 +35,7 @@ import {
   updateProfileSchema,
   userSettingsSchema,
   verifyEmailSchema,
+  listFollowRequestsSchema,
 } from '../modules/user/userSchemas'
 
 export interface RouteDoc {
@@ -144,6 +145,32 @@ export const routeDocs: Record<string, RouteDoc> = {
   'GET /user/following/:userId': {
     summary: 'List who a user follows',
     querystring: pagination,
+  },
+  'POST /user/follow/:userId': {
+    summary: 'Follow a user',
+    description:
+      'Public account: follows immediately → `{ status: "following" }`. ' +
+      'Private account: sends a follow request → `{ status: "requested" }`. ' +
+      'Idempotent: repeating the call returns the current status.',
+  },
+  'DELETE /user/follow/:userId': {
+    summary: 'Unfollow, or cancel a pending request',
+    description: 'Idempotent → `{ status: "none" }`.',
+  },
+  'GET /user/follow-requests': {
+    summary: 'List my incoming follow requests',
+    description: 'Pending requests sent to the current user, newest first.',
+    querystring: listFollowRequestsSchema,
+  },
+  'POST /user/follow-requests/:requestId/accept': {
+    summary: 'Accept a follow request',
+    description:
+      'Creates the follow. 409 if the request was already answered or cancelled.',
+  },
+  'POST /user/follow-requests/:requestId/reject': {
+    summary: 'Reject a follow request',
+    description:
+      'No follow is created; the sender may request again later. 409 if already answered.',
   },
   'GET /user/suggestions': {
     summary: 'Suggested accounts to follow',

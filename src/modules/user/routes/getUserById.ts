@@ -40,6 +40,7 @@ type UserOut = {
 const getUserByIdRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     '/:userId',
+    { preHandler: fastify.authenticateOptional },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const req = request as AuthenticatedRequest
       const currentUserId = req.user?.id

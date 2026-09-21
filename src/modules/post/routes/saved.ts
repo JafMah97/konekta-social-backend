@@ -43,7 +43,16 @@ const savedPostsRoute: FastifyPluginAsync = async (fastify) => {
               { authorId: userId },
               {
                 visibility: 'FOLLOWERS_ONLY',
-                author: { followers: { some: { followerId: userId } } },
+                author: {
+                  followers: {
+                    some: {
+                      followerId: userId,
+                      isPending: false,
+                      isBlocked: false,
+                      isRemoved: false,
+                    },
+                  },
+                },
               },
             ],
           },
@@ -93,7 +102,8 @@ const savedPostsRoute: FastifyPluginAsync = async (fastify) => {
 
         const postIds = validSavedPosts.map((sp) => sp.post!.id)
 
-        const [likesGroup, commentsGroup] = await fastify.prisma.$transaction([
+        // One batch for the whole page instead of one lookup per post (N+1)
+        const [likesGroup, commentsGroup, likedByMe] = await Promise.all([
           fastify.prisma.postLike.groupBy({
             by: ['postId'],
             where: { postId: { in: postIds }, isRemoved: false },
@@ -104,41 +114,37 @@ const savedPostsRoute: FastifyPluginAsync = async (fastify) => {
             where: { postId: { in: postIds }, isDeleted: false },
             _count: { _all: true },
           }),
+          fastify.prisma.postLike.findMany({
+            where: { postId: { in: postIds }, userId, isRemoved: false },
+            select: { postId: true },
+          }),
         ])
 
-        const likesMap = new Map<string, number>()
-        for (const g of likesGroup) {
-          likesMap.set(g.postId, (g._count as { _all: number })._all)
-        }
-
-        const commentsMap = new Map<string, number>()
-        for (const g of commentsGroup) {
-          commentsMap.set(g.postId, (g._count as { _all: number })._all)
-        }
-
-        const mapped = await Promise.all(
-          validSavedPosts.map(async (savedPost) => {
-            const post = savedPost.post!
-            const isLiked = !!(await fastify.prisma.postLike.findFirst({
-              where: { postId: post.id, userId, isRemoved: false },
-            }))
-
-            const dto: PostDTO = toPostDTO(post, {
-              isLiked,
-              isSaved: true,
-              tags: post.tags.map((t) => t.tag.name),
-            })
-            dto.likesCount = likesMap.get(post.id) ?? 0
-            dto.commentsCount = commentsMap.get(post.id) ?? 0
-            dto.viewsCount = post.viewsCount
-
-            return {
-              id: savedPost.id,
-              savedAt: savedPost.savedAt,
-              post: dto,
-            }
-          }),
+        const likesMap = new Map(
+          likesGroup.map((g) => [g.postId, g._count._all]),
         )
+        const commentsMap = new Map(
+          commentsGroup.map((g) => [g.postId, g._count._all]),
+        )
+        const likedSet = new Set(likedByMe.map((l) => l.postId))
+
+        const mapped = validSavedPosts.map((savedPost) => {
+          const post = savedPost.post!
+          const dto: PostDTO = toPostDTO(post, {
+            isLiked: likedSet.has(post.id),
+            isSaved: true,
+            tags: post.tags.map((t) => t.tag.name),
+          })
+          dto.likesCount = likesMap.get(post.id) ?? 0
+          dto.commentsCount = commentsMap.get(post.id) ?? 0
+          dto.viewsCount = post.viewsCount
+
+          return {
+            id: savedPost.id,
+            savedAt: savedPost.savedAt,
+            post: dto,
+          }
+        })
 
         return reply.send({
           success: true,

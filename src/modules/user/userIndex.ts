@@ -14,6 +14,10 @@ import suggestionsRoute from './routes/followersSuggestion'
 import followersRoute from './routes/getFollowers'
 import getFollowingRoute from './routes/getFollowing'
 import getUserByIdRoute from './routes/getUserById'
+import followRoute from './routes/follow'
+import unfollowRoute from './routes/unfollow'
+import getFollowRequestsRoute from './routes/getFollowRequests'
+import respondToFollowRequestRoute from './routes/respondToFollowRequest'
 
 const userIndex: FastifyPluginAsync = async (fastify) => {
   fastify.register(changeEmailRoute, { prefix: '/user' }) //1
@@ -31,6 +35,10 @@ const userIndex: FastifyPluginAsync = async (fastify) => {
   fastify.register(followersRoute, { prefix: '/user' }) //13
   fastify.register(getFollowingRoute, { prefix: '/user' }) //14
   fastify.register(getUserByIdRoute, { prefix: '/user' }) //15
+  fastify.register(followRoute, { prefix: '/user' }) //16
+  fastify.register(unfollowRoute, { prefix: '/user' }) //17
+  fastify.register(getFollowRequestsRoute, { prefix: '/user' }) //18
+  fastify.register(respondToFollowRequestRoute, { prefix: '/user' }) //19-20
 }
 
 export default userIndex

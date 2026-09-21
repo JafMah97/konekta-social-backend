@@ -3,7 +3,7 @@ import {
   type FastifyRequest,
   type FastifyError,
 } from 'fastify'
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
+import { Prisma } from '@prisma/client'
 import { ZodError } from 'zod'
 
 interface FastifyErrorWithDetails extends FastifyError {
@@ -52,7 +52,7 @@ export async function userErrorHandler(
   }
 
   // 2) Prisma unique constraint error
-  if (err instanceof PrismaClientKnownRequestError) {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2002') {
       const target = (err.meta?.target as string[])?.join('.')
       req.log.error(

@@ -7,6 +7,7 @@ import crypto from 'crypto'
 import { prisma } from '../../../plugins/client'
 import { sendVerificationCode } from '../../../utils/mailer'
 import { authErrorHandler } from '../authErrorHandler'
+import { authRateLimits } from '../authRateLimits'
 import {
   resendVerificationSchema,
   type ResendVerificationInput,
@@ -15,6 +16,7 @@ import {
 const resendVerificationEmailRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/resend-verification',
+    { config: { rateLimit: authRateLimits.sendEmail } },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const result = resendVerificationSchema.safeParse(request.body)

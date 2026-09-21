@@ -1,6 +1,7 @@
 import { prisma } from '../../../plugins/client'
 import { loginSchema } from '../authSchemas'
 import { authErrorHandler } from '../authErrorHandler'
+import { authRateLimits } from '../authRateLimits'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import { z } from 'zod'
@@ -20,6 +21,7 @@ type LoginInput = z.infer<typeof loginSchema>
 const loginRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/login',
+    { config: { rateLimit: authRateLimits.login } },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const context = { action: 'login', field: 'email' }
 

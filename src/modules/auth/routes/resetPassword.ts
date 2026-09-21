@@ -6,11 +6,13 @@ import {
 import bcrypt from 'bcrypt'
 import { prisma } from '../../../plugins/client'
 import { authErrorHandler } from '../authErrorHandler'
+import { authRateLimits } from '../authRateLimits'
 import { resetPasswordSchema, type ResetPasswordInput } from '../authSchemas'
 
 const resetPasswordRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/reset-password',
+    { config: { rateLimit: authRateLimits.resetPassword } },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const result = resetPasswordSchema.safeParse(request.body)

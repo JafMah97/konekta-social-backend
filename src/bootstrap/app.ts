@@ -12,6 +12,7 @@ import sensiblePlugin from '../plugins/sensible'
 import authenticatePlugin from '../plugins/authenticate'
 import socketPlugin from '../plugins/websocket'
 import errorHandlerPlugin from '../plugins/errorHandler'
+import securityPlugin from '../plugins/security'
 
 import authIndex from '../modules/auth/authIndex'
 import postIndex from '../modules/post/postIndex'
@@ -24,6 +25,11 @@ const __dirname = path.dirname(__filename)
 export async function buildApp() {
   const app = Fastify({
     pluginTimeout: 60000,
+    // Railway/Render sit behind a proxy: without this every request has the
+    // proxy's IP, so all users would share one rate-limit bucket (and
+    // lastIp / session IPs would be wrong). Off in dev so the header can't
+    // be spoofed.
+    trustProxy: process.env.NODE_ENV === 'production',
     logger: {
       transport: {
         target: 'pino-pretty',
@@ -39,8 +45,7 @@ export async function buildApp() {
 
   // Read allowed origins from environment variables
   const devOrigin = process.env.DEV_ORIGIN
-  const prodOrigin =
-    process.env.PROD_ORIGIN
+  const prodOrigin = process.env.PROD_ORIGIN
   const allowedOrigins = [devOrigin, prodOrigin]
 
   await app.register(cors, {
@@ -54,6 +59,8 @@ export async function buildApp() {
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
     credentials: true,
   })
+
+  await app.register(securityPlugin)
 
   app.register(sensiblePlugin)
   app.register(cookie, { secret: process.env.COOKIE_SECRET || 'dev_secret' })

@@ -9,6 +9,7 @@ import {
   type VerifyEmailWithLinkInput,
 } from '../authSchemas'
 import { authErrorHandler } from '../authErrorHandler'
+import { authRateLimits } from '../authRateLimits'
 import { prisma } from '../../../plugins/client'
 import type { User } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
@@ -21,6 +22,7 @@ if (!JWT_SECRET) {
 const verifyEmailWithLink: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/verify-email-with-link',
+    { config: { rateLimit: authRateLimits.verifyEmail } },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const result = verifyEmailWithLinkSchema.safeParse(request.body)

@@ -18,9 +18,6 @@ const uploadProfileImageRoute: FastifyPluginAsync = async (fastify) => {
     '/profile-picture',
     {
       preHandler: fastify.authenticate,
-      config: {
-        bodyLimit: 10 * 1024 * 1024, // 10MB
-      },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const req = request as AuthenticatedRequest

@@ -7,11 +7,13 @@ import crypto from 'crypto'
 import { prisma } from '../../../plugins/client'
 import { sendPasswordResetLink } from '../../../utils/mailer'
 import { authErrorHandler } from '../authErrorHandler'
+import { authRateLimits } from '../authRateLimits'
 import { forgotPasswordSchema, type ForgotPasswordInput } from '../authSchemas'
 
 const forgotPasswordRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/forgot-password',
+    { config: { rateLimit: authRateLimits.sendEmail } },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const result = forgotPasswordSchema.safeParse(request.body)

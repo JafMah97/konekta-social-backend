@@ -18,9 +18,6 @@ const uploadCoverImageRoute: FastifyPluginAsync = async (fastify) => {
     '/profile-cover',
     {
       preHandler: fastify.authenticate,
-      config: {
-        bodyLimit: 10 * 1024 * 1024, // 10MB limit
-      },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const req = request as AuthenticatedRequest

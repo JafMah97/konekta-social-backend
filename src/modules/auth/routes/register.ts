@@ -128,6 +128,7 @@ import {
 } from 'fastify'
 import { registerSchema } from '../authSchemas'
 import { authErrorHandler } from '../authErrorHandler'
+import { authRateLimits } from '../authRateLimits'
 import { hashPassword } from '../../../utils/hash'
 import { prisma } from '../../../plugins/client'
 import { z } from 'zod'
@@ -143,6 +144,7 @@ if (!JWT_SECRET) {
 const registerRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/register',
+    { config: { rateLimit: authRateLimits.register } },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const result = registerSchema.safeParse(request.body)

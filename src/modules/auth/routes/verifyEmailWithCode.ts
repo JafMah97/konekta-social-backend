@@ -9,6 +9,7 @@ import {
   type VerifyEmailWithCodeInput,
 } from '../authSchemas'
 import { authErrorHandler } from '../authErrorHandler'
+import { authRateLimits } from '../authRateLimits'
 import { prisma } from '../../../plugins/client'
 
 const JWT_SECRET = process.env.JWT_SECRET
@@ -19,6 +20,7 @@ if (!JWT_SECRET) {
 const verifyEmailWithCode: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/verify-email-with-code',
+    { config: { rateLimit: authRateLimits.verifyEmail } },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const result = verifyEmailWithCodeSchema.safeParse(request.body)

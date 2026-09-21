@@ -12,6 +12,14 @@ const securityPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(helmet, {
     // The frontend runs on another origin and loads images from /uploads
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    // Allow only Swagger UI's own inline script/style (by hash) on /docs
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'script-src': ["'self'", ...fastify.swaggerCSP.script],
+        'style-src': ["'self'", 'https:', ...fastify.swaggerCSP.style],
+      },
+    },
   })
 
   // Baseline limit for every route (per IP); sensitive routes override it
@@ -34,4 +42,7 @@ const securityPlugin: FastifyPluginAsync = async (fastify) => {
   )
 }
 
-export default fp(securityPlugin, { name: 'security' })
+export default fp(securityPlugin, {
+  name: 'security',
+  dependencies: ['docs'],
+})

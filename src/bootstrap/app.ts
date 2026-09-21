@@ -13,6 +13,7 @@ import authenticatePlugin from '../plugins/authenticate'
 import socketPlugin from '../plugins/websocket'
 import errorHandlerPlugin from '../plugins/errorHandler'
 import securityPlugin from '../plugins/security'
+import docsPlugin from '../plugins/docs'
 
 import authIndex from '../modules/auth/authIndex'
 import postIndex from '../modules/post/postIndex'
@@ -49,17 +50,31 @@ export async function buildApp() {
   const allowedOrigins = [devOrigin, prodOrigin]
 
   await app.register(cors, {
-    origin: (origin, cb) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        cb(null, true)
+    // Decided per request so the API's own origin is allowed as well:
+    // browsers send Origin on same-origin POSTs from Swagger UI (/docs)
+    delegator: (req, cb) => {
+      const origin = req.headers.origin
+      const selfOrigin = `${req.protocol}://${req.host}`
+      if (!origin || origin === selfOrigin || allowedOrigins.includes(origin)) {
+        cb(null, {
+          origin: true,
+          methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
+          credentials: true,
+        })
       } else {
-        cb(new Error('Not allowed by CORS'), false)
+        cb(
+          Object.assign(new Error('Origin not allowed by CORS'), {
+            statusCode: 403,
+            code: 'CORS_NOT_ALLOWED',
+          }),
+        )
       }
     },
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
-    credentials: true,
   })
 
+  // Docs first: it collects routes via onRoute, and Helmet's CSP needs
+  // the Swagger UI hashes it provides
+  await app.register(docsPlugin)
   await app.register(securityPlugin)
 
   app.register(sensiblePlugin)

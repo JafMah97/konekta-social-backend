@@ -92,3 +92,8 @@ export const resetPasswordSchema = z.object({
 })
 
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>
+
+// Delete account
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, { message: 'Password is required' }),
+})

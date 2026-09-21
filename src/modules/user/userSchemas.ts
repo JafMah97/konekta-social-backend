@@ -114,3 +114,9 @@ export const changeEmailSchema = z.object({
 })
 
 export type ChangeEmailInput = z.infer<typeof changeEmailSchema>
+
+// Verify new email (after change-email)
+export const verifyEmailSchema = z.object({
+  token: z.string().optional(),
+  code: z.string().optional(),
+})

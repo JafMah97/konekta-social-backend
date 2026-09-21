@@ -7,11 +7,8 @@ import bcrypt from 'bcrypt'
 import { z } from 'zod'
 import { prisma } from '../../../plugins/client'
 import { authErrorHandler } from '../authErrorHandler'
+import { deleteAccountSchema } from '../authSchemas'
 import { deleteUserAndData } from '../../../utils/deleteUserAndData'
-
-const deleteAccountSchema = z.object({
-  password: z.string().min(1, { message: 'Password is required' }),
-})
 
 type DeleteAccountInput = z.infer<typeof deleteAccountSchema>
 

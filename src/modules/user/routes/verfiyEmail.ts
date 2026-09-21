@@ -6,11 +6,7 @@ import {
 import { z } from 'zod'
 import type { Prisma, ActivityType } from '@prisma/client'
 import { userErrorHandler } from '../userErrorHandler'
-
-const verifyEmailSchema = z.object({
-  token: z.string().optional(),
-  code: z.string().optional(),
-})
+import { verifyEmailSchema } from '../userSchemas'
 
 type VerifyEmailInput = z.infer<typeof verifyEmailSchema>
 

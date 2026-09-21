@@ -1,4 +1,3 @@
-import nodemailer from 'nodemailer'
 import dotenv from 'dotenv'
 
 dotenv.config()
@@ -10,19 +9,37 @@ const FRONTEND_URL =
     ? process.env.PROD_ORIGIN
     : process.env.DEV_ORIGIN || 'http://localhost:3000'
 
-// Configure SMTP transport
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: false, // true for 465, false for 587
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-})
+// Emails go through Resend's HTTPS API rather than SMTP, because Render's
+// free tier blocks outbound SMTP ports (25/465/587).
+const RESEND_API_KEY = process.env.RESEND_API_KEY
+const EMAIL_FROM = process.env.EMAIL_FROM || 'no-reply@send.jafarmahmoud.sy'
 
-// Common sender
-const EMAIL_FROM = process.env.SMTP_USER
+async function sendMail(to: string, subject: string, html: string) {
+  if (!RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY is not set')
+  }
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: `Konekta <${EMAIL_FROM}>`,
+      to: [to],
+      subject,
+      html,
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(`Resend API error ${res.status}: ${await res.text()}`)
+  }
+
+  const data = (await res.json()) as { id: string }
+  return { messageId: data.id }
+}
 
 export async function sendVerificationCode(
   email: string,
@@ -44,12 +61,11 @@ export async function sendVerificationCode(
     </div>
   `
 
-  const info = await transporter.sendMail({
-    from: `"Konekta" <${EMAIL_FROM}>`,
-    to: email,
-    subject: 'Welcome to Konekta! Verify Your Email',
+  const info = await sendMail(
+    email,
+    'Welcome to Konekta! Verify Your Email',
     html,
-  })
+  )
 
   console.log(
     `[Email] Sent verification email to ${email}, messageId=${info.messageId}`,
@@ -71,12 +87,7 @@ export async function sendPasswordResetLink(email: string, token: string) {
     </div>
   `
 
-  const info = await transporter.sendMail({
-    from: `"Konekta" <${EMAIL_FROM}>`,
-    to: email,
-    subject: 'Reset Your Konekta Password',
-    html,
-  })
+  const info = await sendMail(email, 'Reset Your Konekta Password', html)
 
   console.log(
     `[Email] Sent password reset email to ${email}, messageId=${info.messageId}`,

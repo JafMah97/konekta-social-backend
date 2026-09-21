@@ -1,126 +1,3 @@
-// import {
-//   type FastifyPluginAsync,
-//   type FastifyRequest,
-//   type FastifyReply,
-// } from 'fastify'
-// import { registerSchema } from '../authSchemas'
-// import { authErrorHandler } from '../authErrorHandler'
-// import { hashPassword } from '../../../utils/hash'
-// import { sendVerificationCode } from '../../../utils/mailer'
-// import crypto from 'crypto'
-// import { prisma } from '../../../plugins/client'
-// import { z } from 'zod'
-
-// type RegisterInput = z.infer<typeof registerSchema>
-
-// const registerRoute: FastifyPluginAsync = async (fastify) => {
-//   fastify.post(
-//     '/register',
-//     async (request: FastifyRequest, reply: FastifyReply) => {
-//       try {
-//         const result = registerSchema.safeParse(request.body)
-//         if (!result.success) {
-//           throw result.error
-//         }
-
-//         const { username, email, password, fullName }: RegisterInput =
-//           result.data
-
-//         const userByUsername = await prisma.user.findFirst({
-//           where: { username },
-//           select: { username: true },
-//         })
-
-//         if (userByUsername) {
-//           throw {
-//             statusCode: 409,
-//             code: 'conflictError',
-//             message: 'Username already taken',
-//             details: [{ field: 'username', message: 'Already exists' }],
-//           }
-//         }
-
-//         const userByEmail = await prisma.user.findFirst({
-//           where: { email },
-//           select: { emailVerified: true },
-//         })
-
-//         if (userByEmail) {
-//           throw {
-//             statusCode: 409,
-//             code: 'conflictError',
-//             message: userByEmail.emailVerified
-//               ? 'Email is already verified and registered.'
-//               : 'Email exists but not verified.',
-//             details: [{ field: 'email', message: 'Already exists' }],
-//           }
-//         }
-
-//         const verificationCode = Math.floor(
-//           100000 + Math.random() * 900000,
-//         ).toString()
-//         const emailVerificationToken = crypto.randomBytes(32).toString('hex')
-//         const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
-
-//         const passwordHash = await hashPassword(password)
-
-//         const newUser = await prisma.user.create({
-//           data: {
-//             username,
-//             email,
-//             fullName,
-//             passwordHash,
-//             emailVerified: false,
-//             isPrivate: false,
-//             verificationCode,
-//             codeExpiresAt: expiresAt,
-//             emailVerificationToken,
-//             tokenExpiresAt: expiresAt,
-//           },
-//           select: {
-//             id: true,
-//             emailVerified: true,
-//           },
-//         })
-
-//         await prisma.verificationToken.create({
-//           data: {
-//             userId: newUser.id,
-//             token: emailVerificationToken,
-//             type: 'EMAIL',
-//             expiresAt,
-//           },
-//         })
-
-//         fastify.log.info(`[Register] Created user: ${email}`)
-
-//         await sendVerificationCode(
-//           email,
-//           verificationCode,
-//           emailVerificationToken,
-//         )
-
-//         return reply.status(201).send({
-//           message: 'User registered. Check email for verification code/link.',
-//           user: {
-//             email,
-//             username,
-//             fullName,
-//             emailVerified: newUser.emailVerified,
-//           },
-//         })
-//       } catch (err) {
-//         return authErrorHandler(request, reply, err, {
-//           action: 'register',
-//           field: 'username or email',
-//         })
-//       }
-//     },
-//   )
-// }
-
-// export default registerRoute
-
 import {
   type FastifyPluginAsync,
   type FastifyRequest,
@@ -131,17 +8,12 @@ import { authErrorHandler } from '../authErrorHandler'
 import { authRateLimits } from '../authRateLimits'
 import { hashPassword } from '../../../utils/hash'
 import { prisma } from '../../../plugins/client'
-import { z } from 'zod'
-import jwt from 'jsonwebtoken'
-import { randomUUID } from 'crypto'
+import { issueSecret } from '../../../utils/tokens'
+import { startSession } from '../../../utils/session'
+import { sendVerificationEmail } from '../../../utils/mailer'
 
-type RegisterInput = z.infer<typeof registerSchema>
-
-const JWT_SECRET = process.env.JWT_SECRET
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET is not defined in the environment variables.')
-}
-
+// Creates the account and signs the user in straight away. A verification
+// email (code + link) is sent, but an unverified email does not block login.
 const registerRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/register',
@@ -153,10 +25,8 @@ const registerRoute: FastifyPluginAsync = async (fastify) => {
           throw result.error
         }
 
-        const { username, email, password, fullName }: RegisterInput =
-          result.data
+        const { username, email, password, fullName } = result.data
 
-        // Check username uniqueness
         const userByUsername = await prisma.user.findFirst({
           where: { username },
           select: { username: true },
@@ -170,7 +40,6 @@ const registerRoute: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        // Check email uniqueness
         const userByEmail = await prisma.user.findFirst({
           where: { email },
           select: { email: true },
@@ -184,59 +53,37 @@ const registerRoute: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        const passwordHash = await hashPassword(password)
-
-        const newUser = await prisma.user.create({
+        const user = await prisma.user.create({
           data: {
             username,
             email,
             fullName,
-            passwordHash,
-            emailVerified: true, // skip verification for now
+            passwordHash: await hashPassword(password),
+            emailVerified: false,
             isPrivate: false,
-            lastLoginAt: new Date(),
-            lastIp: request.ip,
           },
           select: { id: true, username: true, email: true },
         })
 
-        // Issue JWT immediately
-        const token = jwt.sign(
-          { id: newUser.id, username: newUser.username, email: newUser.email },
-          JWT_SECRET,
-          { expiresIn: '7d', jwtid: randomUUID() },
-        )
+        const secret = await issueSecret(prisma, user.id, 'EMAIL', {
+          withCode: true,
+        })
+        await startSession(prisma, request, reply, user)
 
-        await prisma.session.create({
-          data: {
-            userId: newUser.id,
-            token,
-            expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
-            ...(request.ip && { ipAddress: request.ip }),
-            ...(request.headers['user-agent'] && {
-              userAgent: request.headers['user-agent'],
-            }),
-          },
+        // Best-effort: a mail outage must not fail a registration that worked
+        const verificationEmailSent = await sendVerificationEmail(email, {
+          token: secret.token,
+          code: secret.code!,
         })
 
-        // 🌍 Environment-aware cookie config
-        const isProd = process.env.NODE_ENV === 'production'
-
-        return reply
-          .setCookie('token', token, {
-            httpOnly: true,
-            secure: isProd,
-            sameSite: isProd ? 'none' : 'lax',
-            path: '/',
-            maxAge: 60 * 60 * 24 * 7, // 7 days
-          })
-          .status(201)
-          .send({
-            message: 'User registered and logged in successfully.',
-            id: newUser.id,
-            username: newUser.username,
-            email: newUser.email,
-          })
+        return reply.status(201).send({
+          message: 'User registered and logged in successfully.',
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          emailVerified: false,
+          verificationEmailSent,
+        })
       } catch (err) {
         return authErrorHandler(request, reply, err, {
           action: 'register',

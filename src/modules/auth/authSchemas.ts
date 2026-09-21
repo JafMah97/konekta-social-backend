@@ -97,3 +97,14 @@ export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>
 export const deleteAccountSchema = z.object({
   password: z.string().min(1, { message: 'Password is required' }),
 })
+
+// ------------------------------------------------------------------
+// Magic link (passwordless sign-in)
+// ------------------------------------------------------------------
+export const magicLinkRequestSchema = z.object({
+  email: z.email({ message: 'Invalid email format' }),
+})
+
+export const magicLinkVerifySchema = z.object({
+  token: z.string().min(10, 'Invalid or missing token'),
+})

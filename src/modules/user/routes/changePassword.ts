@@ -8,6 +8,8 @@ import { changePasswordSchema } from '../userSchemas'
 import { userErrorHandler } from '../userErrorHandler'
 import { comparePassword, hashPassword } from '../../../utils/hash'
 import type { Prisma, ActivityType } from '@prisma/client'
+import { sendPasswordChangedEmail } from '../../../utils/mailer'
+import { forbidDemoAccount } from '../../../utils/demoAccount'
 
 type ChangePasswordInput = z.infer<typeof changePasswordSchema>
 
@@ -19,7 +21,7 @@ interface AuthenticatedRequest extends FastifyRequest {
 const changePasswordRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/change-password',
-    { preHandler: fastify.authenticate },
+    { preHandler: [fastify.authenticate, forbidDemoAccount] },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const req = request as AuthenticatedRequest
       const userId = req.user.id
@@ -92,6 +94,7 @@ const changePasswordRoute: FastifyPluginAsync = async (fastify) => {
         })
 
         fastify.disconnectUser(userId, req.sessionId)
+        void sendPasswordChangedEmail(req.user.email, { viaReset: false })
 
         req.log.info({ userId }, 'Password changed')
 

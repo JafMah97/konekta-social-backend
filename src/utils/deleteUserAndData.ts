@@ -62,9 +62,10 @@ async function deleteInBatches(
 
   while (shouldContinue) {
     try {
+      // deleteMany has no `take`; Prisma 6 calls the batch size `limit`
       const result = await tx[model].deleteMany({
         where: whereCondition,
-        take: batchSize,
+        limit: batchSize,
       })
 
       totalDeleted += result.count

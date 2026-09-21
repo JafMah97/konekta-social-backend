@@ -3,19 +3,20 @@ import {
   type FastifyRequest,
   type FastifyReply,
 } from 'fastify'
-import jwt from 'jsonwebtoken'
-import { randomUUID } from 'crypto'
-import {
-  verifyEmailWithCodeSchema,
-  type VerifyEmailWithCodeInput,
-} from '../authSchemas'
+import { prisma } from '../../../plugins/client'
 import { authErrorHandler } from '../authErrorHandler'
 import { authRateLimits } from '../authRateLimits'
-import { prisma } from '../../../plugins/client'
+import { verifyEmailWithCodeSchema } from '../authSchemas'
+import { consumeCode } from '../../../utils/tokens'
+import { startSession } from '../../../utils/session'
 
-const JWT_SECRET = process.env.JWT_SECRET
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET is not defined in the environment variables.')
+// One generic error for unknown email, wrong code, expired code or an already
+// verified account: the response must not reveal which accounts exist.
+const invalidCode = {
+  statusCode: 400,
+  code: 'invalidCode',
+  message: 'Invalid or expired verification code.',
+  details: [{ field: 'code', message: 'Invalid or expired' }],
 }
 
 const verifyEmailWithCode: FastifyPluginAsync = async (fastify) => {
@@ -29,106 +30,28 @@ const verifyEmailWithCode: FastifyPluginAsync = async (fastify) => {
           throw result.error
         }
 
-        const { email, code }: VerifyEmailWithCodeInput = result.data
+        const { email, code } = result.data
 
         const user = await prisma.user.findUnique({
           where: { email },
-          select: {
-            id: true,
-            username: true,
-            emailVerified: true,
-            verificationCode: true,
-            codeExpiresAt: true,
-          },
+          select: { id: true, username: true, email: true },
         })
-
-        if (!user) {
-          throw {
-            statusCode: 400,
-            code: 'invalidCredentials',
-            message: 'Invalid email or code.',
-            details: [
-              { field: 'email', message: 'Email not found' },
-              { field: 'code', message: 'Code not matched' },
-            ],
-          }
-        }
-
-        if (user.emailVerified) {
-          throw {
-            statusCode: 409,
-            code: 'alreadyVerified',
-            message: 'Email is already verified.',
-            details: [{ field: 'email', message: 'Already verified' }],
-          }
-        }
-
-        if (user.verificationCode !== code) {
-          throw {
-            statusCode: 401,
-            code: 'invalidCode',
-            message: 'Incorrect verification code.',
-            details: [{ field: 'code', message: 'Code does not match' }],
-          }
-        }
-
-        if (!user.codeExpiresAt || user.codeExpiresAt < new Date()) {
-          throw {
-            statusCode: 403,
-            code: 'expiredCode',
-            message: 'Verification code has expired.',
-            details: [{ field: 'code', message: 'Expired' }],
-          }
+        if (!user || !(await consumeCode(prisma, user.id, 'EMAIL', code))) {
+          throw invalidCode
         }
 
         await prisma.user.update({
-          where: { email },
-          data: {
-            emailVerified: true,
-            verificationCode: null,
-            codeExpiresAt: null,
-            emailVerificationToken: null,
-            tokenExpiresAt: null,
-            lastLoginAt: new Date(),
-            lastIp: request.ip,
-          },
+          where: { id: user.id },
+          data: { emailVerified: true },
         })
+        await startSession(prisma, request, reply, user)
 
-        const token = jwt.sign(
-          { id: user.id, email, username: user.username },
-          JWT_SECRET,
-          { expiresIn: '7d', jwtid: randomUUID() },
-        )
-
-        await prisma.session.create({
-          data: {
-            userId: user.id,
-            token,
-            expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
-            ...(request.ip && { ipAddress: request.ip }),
-            ...(request.headers['user-agent'] && {
-              userAgent: request.headers['user-agent'],
-            }),
-          },
+        request.log.info({ userId: user.id }, '[VerifyEmailWithCode] verified')
+        return reply.send({
+          message: 'Email verified and logged in successfully.',
+          id: user.id,
+          username: user.username,
         })
-
-        request.log.info(
-          `[VerifyEmailWithCode] ${email} verified and logged in`,
-        )
-
-        return reply
-          .setCookie('token', token, {
-            httpOnly: true,
-            sameSite: 'none',
-            path: '/',
-            maxAge: 60 * 60 * 24 * 7,
-            secure: process.env.NODE_ENV === 'production',
-          })
-          .send({
-            message: 'Email verified and logged in successfully.',
-            id: user.id,
-            username: user.username,
-          })
       } catch (err) {
         return authErrorHandler(request, reply, err, {
           action: 'verify_email_with_code',

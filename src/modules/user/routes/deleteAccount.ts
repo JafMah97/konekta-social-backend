@@ -5,6 +5,8 @@ import {
 } from 'fastify'
 import { userErrorHandler } from '../userErrorHandler'
 import { deleteUserAndData } from '../../../utils/deleteUserAndData'
+import { sendAccountDeletedEmail } from '../../../utils/mailer'
+import { forbidDemoAccount } from '../../../utils/demoAccount'
 interface AuthenticatedRequest extends FastifyRequest {
   user: NonNullable<FastifyRequest['user']>
 }
@@ -12,10 +14,11 @@ interface AuthenticatedRequest extends FastifyRequest {
 const deleteAccountRoute: FastifyPluginAsync = async (fastify) => {
   fastify.delete(
     '/delete-account',
-    { preHandler: fastify.authenticate },
+    { preHandler: [fastify.authenticate, forbidDemoAccount] },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const req = request as AuthenticatedRequest
       const userId = req.user.id
+      const email = req.user.email
 
       try {
         req.log.info({ userId }, 'Deleting account and all associated data')
@@ -23,6 +26,8 @@ const deleteAccountRoute: FastifyPluginAsync = async (fastify) => {
         // deleteUserAndData should perform the full deletion and return a summary
         // signature expected: async (userId: string, hardDelete?: boolean) => { deletedCounts: Record<string, number>, duration: number }
         const result = await deleteUserAndData(userId, true)
+        fastify.disconnectUser(userId)
+        void sendAccountDeletedEmail(email)
 
         // clear authentication cookie/token (adjust name if different)
         try {

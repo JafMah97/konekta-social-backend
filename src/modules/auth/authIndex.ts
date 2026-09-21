@@ -8,6 +8,7 @@ import verifyEmailWithLink from './routes/verifiyEmailWithLink'
 import resendVerification from './routes/resendVerificationEmail'
 import forgotPassword from './routes/forgotPassword'
 import resetPassword from './routes/resetPassword'
+import magicLinkRoutes from './routes/magicLink'
 
 const authIndex: FastifyPluginAsync = async (fastify) => {
   fastify.register(registerRoute, { prefix: '/auth' })
@@ -18,6 +19,7 @@ const authIndex: FastifyPluginAsync = async (fastify) => {
   fastify.register(resendVerification, { prefix: '/auth' })
   fastify.register(forgotPassword, { prefix: '/auth' })
   fastify.register(resetPassword, { prefix: '/auth' })
+  fastify.register(magicLinkRoutes, { prefix: '/auth' })
 }
 
 export default authIndex

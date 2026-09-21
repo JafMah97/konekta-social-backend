@@ -3,13 +3,16 @@ import {
   type FastifyRequest,
   type FastifyReply,
 } from 'fastify'
-import crypto from 'crypto'
 import { prisma } from '../../../plugins/client'
-import { sendPasswordResetLink } from '../../../utils/mailer'
 import { authErrorHandler } from '../authErrorHandler'
 import { authRateLimits } from '../authRateLimits'
-import { forgotPasswordSchema, type ForgotPasswordInput } from '../authSchemas'
+import { forgotPasswordSchema } from '../authSchemas'
+import { issueSecret } from '../../../utils/tokens'
+import { sendPasswordResetEmail } from '../../../utils/mailer'
 
+// Always the same answer, and the email is sent without awaiting, so neither
+// the response nor its timing (nor a mail outage) reveals whether the address
+// has an account. A new request replaces any earlier reset link.
 const forgotPasswordRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/forgot-password',
@@ -21,32 +24,14 @@ const forgotPasswordRoute: FastifyPluginAsync = async (fastify) => {
           throw result.error
         }
 
-        const { email }: ForgotPasswordInput = result.data
-
         const user = await prisma.user.findUnique({
-          where: { email },
+          where: { email: result.data.email },
           select: { id: true, email: true },
         })
 
-        // Always respond generically to prevent email enumeration
         if (user) {
-          const resetToken = crypto.randomBytes(32).toString('hex')
-          const resetTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
-
-          await prisma.user.update({
-            where: { id: user.id },
-            data: {
-              resetPasswordToken: resetToken,
-              resetPasswordTokenExpiresAt: resetTokenExpiresAt,
-            },
-          })
-
-          await sendPasswordResetLink(user.email, resetToken)
-          fastify.log.info(`[ForgotPassword] Sent reset link to ${user.email}`)
-        } else {
-          fastify.log.info(
-            `[ForgotPassword] Attempted reset for non-existent email: ${email}`,
-          )
+          const { token } = await issueSecret(prisma, user.id, 'PASSWORD_RESET')
+          void sendPasswordResetEmail(user.email, token)
         }
 
         return reply.send({

@@ -3,16 +3,16 @@ import {
   type FastifyRequest,
   type FastifyReply,
 } from 'fastify'
-import crypto from 'crypto'
 import { prisma } from '../../../plugins/client'
-import { sendVerificationCode } from '../../../utils/mailer'
 import { authErrorHandler } from '../authErrorHandler'
 import { authRateLimits } from '../authRateLimits'
-import {
-  resendVerificationSchema,
-  type ResendVerificationInput,
-} from '../authSchemas'
+import { resendVerificationSchema } from '../authSchemas'
+import { issueSecret } from '../../../utils/tokens'
+import { sendVerificationEmail } from '../../../utils/mailer'
 
+// Same answer whether or not the account exists or is already verified, and
+// the email is sent without awaiting so response time doesn't tell either.
+// The new code and link replace the previous ones.
 const resendVerificationEmailRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/resend-verification',
@@ -24,71 +24,25 @@ const resendVerificationEmailRoute: FastifyPluginAsync = async (fastify) => {
           throw result.error
         }
 
-        const { email }: ResendVerificationInput = result.data
-
+        const { email } = result.data
         const user = await prisma.user.findUnique({
           where: { email },
-          select: {
-            id: true,
-            emailVerified: true,
-          },
+          select: { id: true, emailVerified: true },
         })
 
-        if (!user) {
-          throw {
-            statusCode: 404,
-            code: 'userNotFound',
-            message: 'User not found.',
-            details: [
-              { field: 'email', message: 'No account with this email' },
-            ],
-          }
+        if (user && !user.emailVerified) {
+          const secret = await issueSecret(prisma, user.id, 'EMAIL', {
+            withCode: true,
+          })
+          void sendVerificationEmail(email, {
+            token: secret.token,
+            code: secret.code!,
+          })
         }
-
-        if (user.emailVerified) {
-          throw {
-            statusCode: 409,
-            code: 'alreadyVerified',
-            message: 'Email is already verified.',
-            details: [{ field: 'email', message: 'Already verified' }],
-          }
-        }
-
-        const verificationCode = Math.floor(
-          100000 + Math.random() * 900000,
-        ).toString()
-        const emailVerificationToken = crypto.randomBytes(32).toString('hex')
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
-
-        await prisma.user.update({
-          where: { email },
-          data: {
-            verificationCode,
-            codeExpiresAt: expiresAt,
-            emailVerificationToken,
-            tokenExpiresAt: expiresAt,
-          },
-        })
-
-        await prisma.verificationToken.create({
-          data: {
-            userId: user.id,
-            token: emailVerificationToken,
-            type: 'EMAIL',
-            expiresAt,
-          },
-        })
-
-        await sendVerificationCode(
-          email,
-          verificationCode,
-          emailVerificationToken,
-        )
-
-        fastify.log.info(`[ResendVerification] Sent code to ${email}`)
 
         return reply.send({
-          message: 'Verification code resent successfully.',
+          message:
+            'If that account exists and is not verified yet, a new verification email has been sent.',
         })
       } catch (err) {
         return authErrorHandler(request, reply, err, {

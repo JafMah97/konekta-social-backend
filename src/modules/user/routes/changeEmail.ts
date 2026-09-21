@@ -3,38 +3,37 @@ import {
   type FastifyRequest,
   type FastifyReply,
 } from 'fastify'
-import { z } from 'zod'
+import type { Prisma } from '@prisma/client'
 import { changeEmailSchema } from '../userSchemas'
 import { userErrorHandler } from '../userErrorHandler'
 import { comparePassword } from '../../../utils/hash'
-import { sendVerificationCode } from '../../../utils/mailer'
-import type { Prisma } from '@prisma/client'
-import crypto from 'crypto'
-
-type ChangeEmailInput = z.infer<typeof changeEmailSchema>
+import { issueSecret } from '../../../utils/tokens'
+import { sendEmailChangeVerification } from '../../../utils/mailer'
+import { forbidDemoAccount } from '../../../utils/demoAccount'
 
 interface AuthenticatedRequest extends FastifyRequest {
   user: NonNullable<FastifyRequest['user']>
-  body: unknown
 }
 
+// The new address is only *pending* until confirmed (POST /user/verify-new-Email).
+// The current email keeps working meanwhile, so a typo or an unreachable
+// inbox can no longer lock the user out.
 const changeEmailRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/change-email',
-    { preHandler: fastify.authenticate },
+    { preHandler: [fastify.authenticate, forbidDemoAccount] },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const req = request as AuthenticatedRequest
       const userId = req.user.id
       try {
         const parseResult = changeEmailSchema.safeParse(req.body)
         if (!parseResult.success) throw parseResult.error
-        const { newEmail, password }: ChangeEmailInput = parseResult.data
+        const { newEmail, password } = parseResult.data
 
         const user = await fastify.prisma.user.findUnique({
           where: { id: userId },
           select: { id: true, email: true, passwordHash: true },
         })
-
         if (!user) {
           throw {
             statusCode: 404,
@@ -43,11 +42,7 @@ const changeEmailRoute: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        const isPasswordValid = await comparePassword(
-          password,
-          user.passwordHash,
-        )
-        if (!isPasswordValid) {
+        if (!(await comparePassword(password, user.passwordHash))) {
           throw {
             statusCode: 400,
             code: 'validationError',
@@ -56,11 +51,19 @@ const changeEmailRoute: FastifyPluginAsync = async (fastify) => {
           }
         }
 
+        if (newEmail.toLowerCase() === user.email.toLowerCase()) {
+          throw {
+            statusCode: 400,
+            code: 'validationError',
+            message: 'That is already your email address',
+            details: [{ field: 'newEmail', message: 'Same as current email' }],
+          }
+        }
+
         const existingUser = await fastify.prisma.user.findFirst({
           where: { email: newEmail, id: { not: userId } },
           select: { id: true },
         })
-
         if (existingUser) {
           throw {
             statusCode: 409,
@@ -72,65 +75,45 @@ const changeEmailRoute: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        // Generate verification code and token
-        const verificationCode = Math.floor(
-          100000 + Math.random() * 900000,
-        ).toString()
-
-        const emailVerificationToken = crypto.randomBytes(32).toString('hex')
-
-        const codeExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-        const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-
-        // Use transaction to update email and log activity atomically
-        await fastify.prisma.$transaction(async (tx) => {
+        const secret = await fastify.prisma.$transaction(async (tx) => {
           await tx.user.update({
             where: { id: userId },
-            data: {
-              email: newEmail,
-              emailVerified: false,
-              verificationCode,
-              emailVerificationToken,
-              codeExpiresAt,
-              tokenExpiresAt,
-              updatedAt: new Date(),
-            },
+            data: { pendingEmail: newEmail },
           })
-
           await tx.userActivityLog.create({
             data: {
               userId,
               action: 'EMAIL_VERIFICATION',
               metadata: {
-                oldEmail: user.email,
+                step: 'requested',
                 newEmail,
               } as Prisma.InputJsonValue,
               ipAddress: req.ip,
               userAgent: req.headers['user-agent'] ?? null,
             },
           })
+          return issueSecret(tx, userId, 'EMAIL_CHANGE', { withCode: true })
         })
 
-        // Send verification email to new email
-        await sendVerificationCode(
-          newEmail,
-          verificationCode,
-          emailVerificationToken,
-        )
+        const verificationSent = await sendEmailChangeVerification(newEmail, {
+          token: secret.token,
+          code: secret.code!,
+        })
 
         return reply.send({
           success: true,
           message:
-            'Email changed successfully. Please verify your new email address.',
+            'Confirm the new address to finish. Your current email stays active until then.',
           data: {
-            email: newEmail,
-            verificationSent: true,
+            email: user.email,
+            pendingEmail: newEmail,
+            verificationSent,
           },
         })
       } catch (err) {
         return userErrorHandler(req, reply, err, {
           action: 'changeEmail',
-          ...(req.user?.id && { userId: req.user.id }),
+          userId,
         })
       }
     },

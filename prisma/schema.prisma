@@ -37,6 +37,9 @@ model User {
   deletedAt                   DateTime?
 
   emailVerified               Boolean             @default(false)
+  // New address waiting for confirmation; email stays unchanged until then
+  pendingEmail                String?
+  // Legacy: tokens/codes now live hashed in VerificationToken (unused, kept for data)
   codeExpiresAt               DateTime?
   emailVerificationToken      String?
   tokenExpiresAt              DateTime?
@@ -637,6 +640,8 @@ enum VerificationType {
   EMAIL
   PASSWORD_RESET
   TWO_FACTOR
+  MAGIC_LINK
+  EMAIL_CHANGE
 }
 
 enum PostFormat {

@@ -3,11 +3,13 @@ import {
   type FastifyRequest,
   type FastifyReply,
 } from 'fastify'
-import bcrypt from 'bcrypt'
 import { prisma } from '../../../plugins/client'
 import { authErrorHandler } from '../authErrorHandler'
 import { authRateLimits } from '../authRateLimits'
-import { resetPasswordSchema, type ResetPasswordInput } from '../authSchemas'
+import { resetPasswordSchema } from '../authSchemas'
+import { hashPassword } from '../../../utils/hash'
+import { consumeToken } from '../../../utils/tokens'
+import { sendPasswordChangedEmail } from '../../../utils/mailer'
 
 const resetPasswordRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
@@ -20,17 +22,11 @@ const resetPasswordRoute: FastifyPluginAsync = async (fastify) => {
           throw result.error
         }
 
-        const { token, newPassword }: ResetPasswordInput = result.data
+        const { token, newPassword } = result.data
+        const passwordHash = await hashPassword(newPassword)
 
-        const user = await prisma.user.findFirst({
-          where: {
-            resetPasswordToken: token,
-            resetPasswordTokenExpiresAt: { gt: new Date() },
-          },
-          select: { id: true },
-        })
-
-        if (!user) {
+        const userId = await consumeToken(prisma, 'PASSWORD_RESET', token)
+        if (!userId) {
           throw {
             statusCode: 401,
             code: 'invalidToken',
@@ -39,26 +35,20 @@ const resetPasswordRoute: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        const hashedPassword = await bcrypt.hash(newPassword, 10)
-
-        // Reset implies the account may be compromised: sign out every device
-        await prisma.$transaction([
+        // Reset implies the account may be compromised: sign out every
+        // device. Following the emailed link also proves the address.
+        const [user] = await prisma.$transaction([
           prisma.user.update({
-            where: { id: user.id },
-            data: {
-              passwordHash: hashedPassword,
-              resetPasswordToken: null,
-              resetPasswordTokenExpiresAt: null,
-            },
+            where: { id: userId },
+            data: { passwordHash, emailVerified: true },
+            select: { email: true },
           }),
-          prisma.session.deleteMany({ where: { userId: user.id } }),
+          prisma.session.deleteMany({ where: { userId } }),
         ])
-        fastify.disconnectUser(user.id)
+        fastify.disconnectUser(userId)
+        void sendPasswordChangedEmail(user.email, { viaReset: true })
 
-        fastify.log.info(
-          `[ResetPassword] User ${user.id} password has been reset`,
-        )
-
+        request.log.info({ userId }, '[ResetPassword] password reset')
         return reply.send({
           message: 'Password has been reset successfully.',
         })

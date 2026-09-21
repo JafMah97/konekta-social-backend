@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client'
 import { userErrorHandler } from '../userErrorHandler'
 import { followUserParamsSchema } from '../userSchemas'
+import { notify } from '../../notification/notify'
 
 interface AuthenticatedRequest extends FastifyRequest {
   user: NonNullable<FastifyRequest['user']>
@@ -120,6 +121,12 @@ const followRoute: FastifyPluginAsync = async (fastify) => {
           )
 
           req.log.info({ userId: me.id, targetId }, 'Follow request sent')
+          await notify(fastify, {
+            recipientId: targetId,
+            actorId: me.id,
+            type: 'follow_request',
+            link: `/users/${me.id}`,
+          })
           return reply.send({ success: true, data: { status: 'requested' } })
         }
 
@@ -140,6 +147,12 @@ const followRoute: FastifyPluginAsync = async (fastify) => {
         )
 
         req.log.info({ userId: me.id, targetId }, 'User followed')
+        await notify(fastify, {
+          recipientId: targetId,
+          actorId: me.id,
+          type: 'follow',
+          link: `/users/${me.id}`,
+        })
         return reply.send({ success: true, data: { status: 'following' } })
       } catch (err) {
         return userErrorHandler(req, reply, err, {

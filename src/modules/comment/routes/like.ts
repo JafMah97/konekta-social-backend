@@ -6,6 +6,7 @@ import {
 import { z } from 'zod'
 import { likeCommentSchema } from '../commentSchemas'
 import { commentErrorHandler } from '../commentErrorHandler'
+import { excerpt, notify } from '../../notification/notify'
 import type { Prisma } from '@prisma/client'
 
 interface AuthenticatedRequest extends FastifyRequest {
@@ -116,6 +117,15 @@ const likeCommentRoute: FastifyPluginAsync = async (fastify) => {
         })
 
         fastify.log.info(`[Comment] Liked comment: ${commentId}`)
+
+        await notify(fastify, {
+          recipientId: comment.author.id,
+          actorId: authenticatedRequest.user.id,
+          type: 'comment_liked',
+          postId: comment.postId,
+          messageText: excerpt(comment.content),
+          link: `/posts/${comment.postId}?comment=${commentId}`,
+        })
 
         // ✅ Normalized response, same shape as create/edit/list
         return reply.status(200).send({

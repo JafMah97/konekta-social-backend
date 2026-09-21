@@ -5,6 +5,7 @@ import {
 } from 'fastify'
 import { userErrorHandler } from '../userErrorHandler'
 import { followUserParamsSchema } from '../userSchemas'
+import { withdrawNotification } from '../../notification/notify'
 
 interface AuthenticatedRequest extends FastifyRequest {
   user: NonNullable<FastifyRequest['user']>
@@ -59,6 +60,11 @@ const unfollowRoute: FastifyPluginAsync = async (fastify) => {
         })
 
         req.log.info({ userId: me.id, targetId }, 'Unfollowed')
+        await withdrawNotification(fastify, {
+          recipientId: targetId,
+          actorId: me.id,
+          type: 'follow_request',
+        })
         return reply.send({ success: true, data: { status: 'none' } })
       } catch (err) {
         return userErrorHandler(req, reply, err, {

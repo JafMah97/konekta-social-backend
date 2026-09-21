@@ -37,6 +37,7 @@ import {
   verifyEmailSchema,
   listFollowRequestsSchema,
 } from '../modules/user/userSchemas'
+import { listNotificationsSchema } from '../modules/notification/notificationSchemas'
 
 export interface RouteDoc {
   summary: string
@@ -230,6 +231,23 @@ export const routeDocs: Record<string, RouteDoc> = {
   'POST /comments/unlike': {
     summary: 'Unlike a comment',
     body: unlikeCommentSchema,
+  },
+
+  // ─── Notifications ─────────────────────────────────────
+  'GET /notifications/': {
+    summary: 'List my notifications',
+    description:
+      'Newest first, with `unreadCount`. Types: like_post, comment, comment_liked, ' +
+      'follow, follow_request, follow_accepted.',
+    querystring: listNotificationsSchema,
+  },
+  'GET /notifications/unread-count': { summary: 'Unread notification count' },
+  'POST /notifications/:notificationId/read': {
+    summary: 'Mark a notification as read',
+  },
+  'POST /notifications/read-all': { summary: 'Mark all notifications as read' },
+  'DELETE /notifications/:notificationId': {
+    summary: 'Delete a notification',
   },
 
   // ─── System ────────────────────────────────────────────

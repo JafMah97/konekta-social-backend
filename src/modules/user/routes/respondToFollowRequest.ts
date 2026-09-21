@@ -5,6 +5,7 @@ import {
 } from 'fastify'
 import { userErrorHandler } from '../userErrorHandler'
 import { followRequestParamsSchema } from '../userSchemas'
+import { markNotificationsRead, notify } from '../../notification/notify'
 
 interface AuthenticatedRequest extends FastifyRequest {
   user: NonNullable<FastifyRequest['user']>
@@ -91,6 +92,20 @@ const respondToFollowRequestRoute: FastifyPluginAsync = async (fastify) => {
             { userId: me.id, requestId },
             `Follow request ${action}ed`,
           )
+
+          await markNotificationsRead(fastify, {
+            recipientId: me.id,
+            actorId: followRequest.senderId,
+            type: 'follow_request',
+          })
+          if (action === 'accept') {
+            await notify(fastify, {
+              recipientId: followRequest.senderId,
+              actorId: me.id,
+              type: 'follow_accepted',
+              link: `/users/${me.id}`,
+            })
+          }
           return reply.send({
             success: true,
             data: { status: action === 'accept' ? 'accepted' : 'rejected' },

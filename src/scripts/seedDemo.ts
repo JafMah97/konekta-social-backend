@@ -10,8 +10,14 @@
 // change it. Deleting a demo user cascades to everything linked to them,
 // including other people's likes/comments on demo posts.
 import 'dotenv/config'
-import { PrismaClient, type PostVisibility } from '@prisma/client'
+import {
+  PrismaClient,
+  type NotificationType,
+  type PostVisibility,
+  type Prisma,
+} from '@prisma/client'
 import { hashPassword } from '../utils/hash'
+import { excerpt } from '../modules/notification/notify'
 
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'demo12345'
 
@@ -147,7 +153,7 @@ const POSTS: DemoPost[] = [
   },
   {
     author: 'demo',
-    hoursAgo: 26,
+    hoursAgo: 6,
     title: 'Hello from the demo account',
     content:
       'This account exists so you can try the API from /docs. Like, comment, save, post: go ahead. The data is reset regularly.',
@@ -280,8 +286,33 @@ async function main() {
           ids[key] = user.id
         }
 
-        for (const [follower, following] of FOLLOWS) {
+        // Notifications mirror the seeded activity, as if it happened live;
+        // anything older than a day is already read
+        const notifications: Prisma.NotificationCreateManyInput[] = []
+        const note = (
+          recipient: Who,
+          actor: Who,
+          type: NotificationType,
+          hoursAgo: number,
+          extra: Partial<Prisma.NotificationCreateManyInput> = {},
+        ) => {
+          if (recipient === actor) return
+          notifications.push({
+            userId: ids[recipient],
+            actorId: ids[actor],
+            type,
+            createdAt: ago(hoursAgo),
+            isRead: hoursAgo > 24,
+            readAt: hoursAgo > 24 ? ago(hoursAgo - 1) : null,
+            ...extra,
+          })
+        }
+
+        for (const [i, [follower, following]] of FOLLOWS.entries()) {
           const f = DEMO_USERS[follower]
+          note(following, follower, 'follow', (i + 1) * 7, {
+            link: `/users/${ids[follower]}`,
+          })
           await tx.follow.create({
             data: {
               followerId: ids[follower],
@@ -308,9 +339,14 @@ async function main() {
             },
           })
 
-          for (const who of p.likedBy ?? []) {
+          const postLink = `/posts/${post.id}`
+          for (const [i, who] of (p.likedBy ?? []).entries()) {
             await tx.postLike.create({
               data: { postId: post.id, userId: ids[who] },
+            })
+            note(p.author, who, 'like_post', p.hoursAgo - (i + 1) * 0.2, {
+              postId: post.id,
+              link: postLink,
             })
           }
 
@@ -327,9 +363,21 @@ async function main() {
                 createdAt: ago(p.hoursAgo - (i + 1) * 0.5),
               },
             })
+            const commentLink = `${postLink}?comment=${comment.id}`
+            const commentHoursAgo = p.hoursAgo - (i + 1) * 0.5
+            note(p.author, who, 'comment', commentHoursAgo, {
+              postId: post.id,
+              messageText: excerpt(content),
+              link: commentLink,
+            })
             for (const liker of likedBy ?? []) {
               await tx.commentLike.create({
                 data: { commentId: comment.id, userId: ids[liker] },
+              })
+              note(who, liker, 'comment_liked', commentHoursAgo - 0.25, {
+                postId: post.id,
+                messageText: excerpt(content),
+                link: commentLink,
               })
             }
           }
@@ -346,6 +394,8 @@ async function main() {
             })
           }
         }
+
+        await tx.notification.createMany({ data: notifications })
       },
       { timeout: 120_000 },
     )
@@ -369,6 +419,7 @@ async function main() {
         '                       hides the one from yusuf_ops (not followed)',
         '  GET  /posts/saved    2 bookmarked posts',
         '  GET  /user/me        the demo profile',
+        '  GET  /notifications  likes, comments and follows (some unread)',
       ].join('\n'),
     )
   } finally {

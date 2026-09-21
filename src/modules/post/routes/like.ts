@@ -6,6 +6,7 @@ import {
 import { z } from 'zod'
 import { likePostSchema } from '../postSchemas'
 import { postErrorHandler } from '../postErrorHandler'
+import { notify } from '../../notification/notify'
 import type { Prisma } from '@prisma/client'
 import { toPostDTO, type PostDTO } from '../dto/postDTO'
 
@@ -102,6 +103,14 @@ const likePostRoute: FastifyPluginAsync = async (fastify) => {
           `[Post] User ${authenticatedRequest.user.id} liked post: ${postId}`,
         )
 
+        await notify(fastify, {
+          recipientId: post.author.id,
+          actorId: authenticatedRequest.user.id,
+          type: 'like_post',
+          postId,
+          link: `/posts/${postId}`,
+        })
+
         const [likesCount, commentsCount] = await fastify.prisma.$transaction([
           fastify.prisma.postLike.count({
             where: { postId: post.id, isRemoved: false },
@@ -110,11 +119,10 @@ const likePostRoute: FastifyPluginAsync = async (fastify) => {
             where: { postId: post.id, isDeleted: false },
           }),
         ])
-        
+
         const isSaved = !!(await fastify.prisma.savedPost.findFirst({
           where: { postId: post.id, userId, isRemoved: false },
         }))
-
 
         const dto: PostDTO = toPostDTO(post, {
           isLiked: true,

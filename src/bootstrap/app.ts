@@ -19,6 +19,7 @@ import authIndex from '../modules/auth/authIndex'
 import postIndex from '../modules/post/postIndex'
 import userIndex from '../modules/user/userIndex'
 import commentIndex from '../modules/comment/commentIndex'
+import notificationIndex from '../modules/notification/notificationIndex'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -97,6 +98,7 @@ export async function buildApp() {
   app.register(postIndex)
   app.register(userIndex)
   app.register(commentIndex)
+  app.register(notificationIndex)
 
   app.get('/ping', async () => {
     return { status: 'ok' }

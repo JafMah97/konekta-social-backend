@@ -6,6 +6,7 @@ import {
 import { z } from 'zod'
 import { createCommentSchema } from '../commentSchemas'
 import { commentErrorHandler } from '../commentErrorHandler'
+import { excerpt, notify } from '../../notification/notify'
 import type { Prisma } from '@prisma/client'
 
 interface AuthenticatedRequest extends FastifyRequest {
@@ -113,6 +114,15 @@ const createCommentRoute: FastifyPluginAsync = async (fastify) => {
         ])
 
         fastify.log.info(`[Comment] Created comment: ${createdComment.id}`)
+
+        await notify(fastify, {
+          recipientId: post.authorId,
+          actorId: authenticatedRequest.user.id,
+          type: 'comment',
+          postId,
+          messageText: excerpt(content),
+          link: `/posts/${postId}?comment=${createdComment.id}`,
+        })
 
         // -----------------------------------------
         // STEP 3 — Normalized response

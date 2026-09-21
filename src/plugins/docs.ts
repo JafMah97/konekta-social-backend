@@ -13,6 +13,7 @@ const TAGS: Record<string, string> = {
   user: 'Users',
   posts: 'Posts',
   comments: 'Comments',
+  notifications: 'Notifications',
 }
 
 // What the client sends (`io: 'input'`), so `.transform()`ed query params
@@ -106,6 +107,12 @@ const docsPlugin: FastifyPluginAsync = async (fastify) => {
         { name: 'Users', description: 'Profiles, settings, social graph' },
         { name: 'Posts', description: 'Feed, posts, likes, bookmarks' },
         { name: 'Comments', description: 'Comments and comment likes' },
+        {
+          name: 'Notifications',
+          description:
+            'Likes, comments, follows. Also pushed live over Socket.IO as a ' +
+            '`notification` event (same shape as the list items).',
+        },
         { name: 'System', description: 'Health' },
       ],
       components: {

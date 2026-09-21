@@ -22,8 +22,13 @@ const logoutRoute: FastifyPluginAsync = async (fastify) => {
         )
       }
 
-      // 🧹 Delete session from database
+      // 🧹 Delete session from database and drop its live sockets
+      const session = await prisma.session.findUnique({
+        where: { token },
+        select: { id: true },
+      })
       await prisma.session.deleteMany({ where: { token } })
+      if (session) fastify.disconnectSession(session.id)
 
       fastify.log.info('[Logout] Session deleted and token cookie cleared')
 

@@ -27,6 +27,9 @@ declare module 'fastify' {
   interface FastifyInstance {
     prisma: PrismaClient
     multipart
+    verifySession: (
+      token: string,
+    ) => Promise<{ sessionId: string; user: RequestUser }>
     authenticate: (req: FastifyRequest, rep: FastifyReplyType) => Promise<void>
     authenticateOptional: (
       req: FastifyRequest,

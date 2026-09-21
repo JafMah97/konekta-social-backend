@@ -51,6 +51,7 @@ const resetPasswordRoute: FastifyPluginAsync = async (fastify) => {
           }),
           prisma.session.deleteMany({ where: { userId: user.id } }),
         ])
+        fastify.disconnectUser(user.id)
 
         fastify.log.info(
           `[ResetPassword] User ${user.id} password has been reset`,

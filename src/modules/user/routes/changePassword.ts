@@ -91,6 +91,8 @@ const changePasswordRoute: FastifyPluginAsync = async (fastify) => {
           })
         })
 
+        fastify.disconnectUser(userId, req.sessionId)
+
         req.log.info({ userId }, 'Password changed')
 
         return reply.send({

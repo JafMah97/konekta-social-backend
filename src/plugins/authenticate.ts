@@ -13,19 +13,13 @@ interface JwtPayload {
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_backup'
 
 const authenticate: FastifyPluginAsync = async (fastify) => {
-  fastify.decorate('authenticate', async (req) => {
-    const token =
-      req.cookies?.token || req.headers.authorization?.replace('Bearer ', '')
-
-    if (!token) {
-      throw fastify.httpErrors.unauthorized('Authentication token missing')
-    }
-
+  // Shared by HTTP requests and Socket.IO handshakes
+  fastify.decorate('verifySession', async (token: string) => {
     let payload: JwtPayload
     try {
       payload = jwt.verify(token, JWT_SECRET) as JwtPayload
     } catch (err) {
-      req.log.warn(
+      fastify.log.warn(
         chalk.yellow(`Token verification failed: ${(err as Error).message}`),
       )
       throw fastify.httpErrors.unauthorized('Token is invalid or expired')
@@ -65,15 +59,24 @@ const authenticate: FastifyPluginAsync = async (fastify) => {
       throw fastify.httpErrors.unauthorized('Session has expired')
     }
 
-    const { user } = session
-
-    // Create the user object with JWT payload
-    req.user = {
-      ...user,
-      iat: payload.iat,
-      exp: payload.exp,
+    return {
+      sessionId: session.id,
+      user: { ...session.user, iat: payload.iat, exp: payload.exp },
     }
-    req.sessionId = session.id
+  })
+
+  fastify.decorate('authenticate', async (req) => {
+    const token =
+      req.cookies?.token || req.headers.authorization?.replace('Bearer ', '')
+
+    if (!token) {
+      throw fastify.httpErrors.unauthorized('Authentication token missing')
+    }
+
+    const { sessionId, user } = await fastify.verifySession(token)
+
+    req.user = user
+    req.sessionId = sessionId
 
     req.log.info(chalk.green(`Authenticated user ${user.username}`))
   })

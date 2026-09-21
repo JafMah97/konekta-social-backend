@@ -34,12 +34,14 @@ export const getCommentsByPostIdSchema = z.object({
   postId: z.cuid('Invalid post ID'),
   page: z
     .string()
+    .optional()
     .transform((val) => Number(val || 1))
     .refine((val) => Number.isInteger(val) && val > 0, {
       message: 'Page must be a positive integer',
     }),
   limit: z
     .string()
+    .optional()
     .transform((val) => Number(val || 20))
     .refine((val) => Number.isInteger(val) && val >= 1 && val <= 50, {
       message: 'Limit must be between 1 and 50',

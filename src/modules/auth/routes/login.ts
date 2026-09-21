@@ -4,6 +4,7 @@ import { authErrorHandler } from '../authErrorHandler'
 import { authRateLimits } from '../authRateLimits'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import {
   type FastifyPluginAsync,
@@ -63,7 +64,9 @@ const loginRoute: FastifyPluginAsync = async (fastify) => {
         const token = jwt.sign(
           { id: user.id, email: user.email, username: user.username },
           JWT_SECRET,
-          { expiresIn: '7d' },
+          // Unique per token: same-second logins would otherwise produce
+          // identical JWTs and collide on the unique Session.token
+          { expiresIn: '7d', jwtid: randomUUID() },
         )
 
         // 🧠 Update last login metadata

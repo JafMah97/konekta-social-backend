@@ -9,36 +9,37 @@ const FRONTEND_URL =
     ? process.env.PROD_ORIGIN
     : process.env.DEV_ORIGIN || 'http://localhost:3000'
 
-// Emails go through Resend's HTTPS API rather than SMTP, because Render's
+// Emails go through Brevo's HTTPS API rather than SMTP, because Render's
 // free tier blocks outbound SMTP ports (25/465/587).
-const RESEND_API_KEY = process.env.RESEND_API_KEY
-const EMAIL_FROM = process.env.EMAIL_FROM || 'no-reply@send.jafarmahmoud.sy'
+const BREVO_API_KEY = process.env.BREVO_API_KEY
+const EMAIL_FROM = process.env.EMAIL_FROM || 'no-reply@jafarmahmoud.sy'
 
 async function sendMail(to: string, subject: string, html: string) {
-  if (!RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY is not set')
+  if (!BREVO_API_KEY) {
+    throw new Error('BREVO_API_KEY is not set')
   }
 
-  const res = await fetch('https://api.resend.com/emails', {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
+      'api-key': BREVO_API_KEY,
       'Content-Type': 'application/json',
+      Accept: 'application/json',
     },
     body: JSON.stringify({
-      from: `Konekta <${EMAIL_FROM}>`,
-      to: [to],
+      sender: { name: 'Konekta', email: EMAIL_FROM },
+      to: [{ email: to }],
       subject,
-      html,
+      htmlContent: html,
     }),
   })
 
   if (!res.ok) {
-    throw new Error(`Resend API error ${res.status}: ${await res.text()}`)
+    throw new Error(`Brevo API error ${res.status}: ${await res.text()}`)
   }
 
-  const data = (await res.json()) as { id: string }
-  return { messageId: data.id }
+  const data = (await res.json()) as { messageId: string }
+  return { messageId: data.messageId }
 }
 
 export async function sendVerificationCode(

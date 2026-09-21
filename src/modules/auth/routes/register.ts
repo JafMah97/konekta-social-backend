@@ -133,6 +133,7 @@ import { hashPassword } from '../../../utils/hash'
 import { prisma } from '../../../plugins/client'
 import { z } from 'zod'
 import jwt from 'jsonwebtoken'
+import { randomUUID } from 'crypto'
 
 type RegisterInput = z.infer<typeof registerSchema>
 
@@ -203,7 +204,7 @@ const registerRoute: FastifyPluginAsync = async (fastify) => {
         const token = jwt.sign(
           { id: newUser.id, username: newUser.username, email: newUser.email },
           JWT_SECRET,
-          { expiresIn: '7d' },
+          { expiresIn: '7d', jwtid: randomUUID() },
         )
 
         await prisma.session.create({

@@ -4,6 +4,7 @@ import {
   type FastifyReply,
 } from 'fastify'
 import jwt from 'jsonwebtoken'
+import { randomUUID } from 'crypto'
 import {
   verifyEmailWithCodeSchema,
   type VerifyEmailWithCodeInput,
@@ -96,7 +97,7 @@ const verifyEmailWithCode: FastifyPluginAsync = async (fastify) => {
         const token = jwt.sign(
           { id: user.id, email, username: user.username },
           JWT_SECRET,
-          { expiresIn: '7d' },
+          { expiresIn: '7d', jwtid: randomUUID() },
         )
 
         await prisma.session.create({

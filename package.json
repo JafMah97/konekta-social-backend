@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsup",
     "start": "node dist/server.js",
-    "seed": "node dist/utils/seed.js"
+    "seed": "tsx src/utils/seed.ts",
+    "seed:demo": "tsx src/scripts/seedDemo.ts"
   },
   "lint-staged": {
     "*.ts": "eslint --fix"

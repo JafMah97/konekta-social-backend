@@ -397,7 +397,8 @@ async function main() {
 
         await tx.notification.createMany({ data: notifications })
       },
-      { timeout: 120_000 },
+      // Generous limits: against a remote DB every query is a network round trip
+      { maxWait: 30_000, timeout: 600_000 },
     )
 
     if (reset) {

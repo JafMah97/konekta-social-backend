@@ -13,7 +13,6 @@ dist/
 # Prisma artifacts
 prisma/dev.db
 prisma/dev.db-journal
-prisma/migrations/
 
 # Logs
 *.log
@@ -33,3 +32,6 @@ Thumbs.db
 
 
 /src/generated/prisma
+
+# Private working plan
+plan.md

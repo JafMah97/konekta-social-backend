@@ -70,6 +70,14 @@ const changePasswordRoute: FastifyPluginAsync = async (fastify) => {
             },
           })
 
+          // Sign out every other device; keep the current session alive
+          await tx.session.deleteMany({
+            where: {
+              userId,
+              ...(req.sessionId && { id: { not: req.sessionId } }),
+            },
+          })
+
           await tx.userActivityLog.create({
             data: {
               userId,

@@ -31,26 +31,41 @@ const authenticate: FastifyPluginAsync = async (fastify) => {
       throw fastify.httpErrors.unauthorized('Token is invalid or expired')
     }
 
-    const user = await fastify.prisma.user.findUnique({
-      where: { id: payload.id },
+    // A valid signature is not enough: the token must still have a live
+    // session row, so logout / password changes can revoke it immediately.
+    const session = await fastify.prisma.session.findUnique({
+      where: { token },
       select: {
         id: true,
-        email: true,
-        username: true,
-        profileImage: true,
-        fullName: true,
-        isPrivate: true,
-        isProfileComplete: true,
-        emailVerified: true,
-        createdAt: true,
-        updatedAt: true,
-        isActive: true,
+        userId: true,
+        expiresAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            profileImage: true,
+            fullName: true,
+            isPrivate: true,
+            isProfileComplete: true,
+            emailVerified: true,
+            createdAt: true,
+            updatedAt: true,
+            isActive: true,
+          },
+        },
       },
     })
 
-    if (!user) {
-      throw fastify.httpErrors.unauthorized('User does not exist')
+    if (!session || session.userId !== payload.id) {
+      throw fastify.httpErrors.unauthorized('Session has been revoked')
     }
+
+    if (session.expiresAt <= new Date()) {
+      throw fastify.httpErrors.unauthorized('Session has expired')
+    }
+
+    const { user } = session
 
     // Create the user object with JWT payload
     req.user = {
@@ -58,6 +73,7 @@ const authenticate: FastifyPluginAsync = async (fastify) => {
       iat: payload.iat,
       exp: payload.exp,
     }
+    req.sessionId = session.id
 
     req.log.info(chalk.green(`Authenticated user ${user.username}`))
   })

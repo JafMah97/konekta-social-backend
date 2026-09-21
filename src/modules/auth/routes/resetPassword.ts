@@ -39,14 +39,18 @@ const resetPasswordRoute: FastifyPluginAsync = async (fastify) => {
 
         const hashedPassword = await bcrypt.hash(newPassword, 10)
 
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            passwordHash: hashedPassword,
-            resetPasswordToken: null,
-            resetPasswordTokenExpiresAt: null,
-          },
-        })
+        // Reset implies the account may be compromised: sign out every device
+        await prisma.$transaction([
+          prisma.user.update({
+            where: { id: user.id },
+            data: {
+              passwordHash: hashedPassword,
+              resetPasswordToken: null,
+              resetPasswordTokenExpiresAt: null,
+            },
+          }),
+          prisma.session.deleteMany({ where: { userId: user.id } }),
+        ])
 
         fastify.log.info(
           `[ResetPassword] User ${user.id} password has been reset`,

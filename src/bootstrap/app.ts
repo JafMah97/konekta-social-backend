@@ -5,7 +5,6 @@ import formbody from '@fastify/formbody'
 import multipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
 import path from 'path'
-import { fileURLToPath } from 'url'
 
 import prismaPlugin from '../plugins/prisma'
 import sensiblePlugin from '../plugins/sensible'
@@ -20,9 +19,6 @@ import postIndex from '../modules/post/postIndex'
 import userIndex from '../modules/user/userIndex'
 import commentIndex from '../modules/comment/commentIndex'
 import notificationIndex from '../modules/notification/notificationIndex'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
 
 export async function buildApp() {
   const app = Fastify({
@@ -86,7 +82,9 @@ export async function buildApp() {
     attachFieldsToBody: false,
   })
   app.register(fastifyStatic, {
-    root: path.join(__dirname, '..', '..', 'uploads'),
+    // Same location the upload helpers write to (utils/saveUploadedFile.ts).
+    // Not __dirname: after bundling that is dist/, not src/bootstrap/
+    root: path.join(process.cwd(), 'uploads'),
     prefix: '/uploads/',
   })
   app.register(prismaPlugin)
@@ -103,6 +101,25 @@ export async function buildApp() {
   app.get('/ping', async () => {
     return { status: 'ok' }
   })
+
+  // Readiness: also proves the database answers. Point uptime monitors here
+  // (keeps both the host and a free-tier database from idling). /ping stays
+  // DB-free for the platform's liveness check, so a DB blip never restarts the app.
+  app.get('/health', async (_request, reply) => {
+    const started = Date.now()
+    try {
+      await app.prisma.$queryRaw`SELECT 1`
+      return { status: 'ok', db: 'ok', dbLatencyMs: Date.now() - started }
+    } catch (err) {
+      app.log.error({ err }, 'Health check: database unreachable')
+      return reply.status(503).send({ status: 'error', db: 'unreachable' })
+    }
+  })
+
+  // The bare API URL lands on the interactive docs
+  app.get('/', { schema: { hide: true } }, async (_request, reply) =>
+    reply.redirect('/docs'),
+  )
 
   return app
 }

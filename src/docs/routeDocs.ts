@@ -251,5 +251,14 @@ export const routeDocs: Record<string, RouteDoc> = {
   },
 
   // ─── System ────────────────────────────────────────────
-  'GET /ping': { summary: 'Health check' },
+  'GET /ping': {
+    summary: 'Liveness check',
+    description: 'Does not touch the database (used by the hosting platform).',
+  },
+  'GET /health': {
+    summary: 'Readiness check (database included)',
+    description:
+      'Runs `SELECT 1`. 200 with `dbLatencyMs`, or 503 if the database is unreachable. ' +
+      'Used by the uptime monitor, which also keeps the free-tier database active.',
+  },
 }

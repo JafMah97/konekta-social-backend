@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24
+
+jobs:
+  checks:
+    name: Lint, typecheck, build
+    runs-on: ubuntu-latest
+    env:
+      # Only needs to be well-formed: nothing connects in this job
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - run: npx prisma generate
+      - run: npx eslint src
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  e2e:
+    name: Docker image + end-to-end smoke test
+    needs: checks
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: social
+          POSTGRES_PASSWORD: social
+          POSTGRES_DB: social
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U social -d social"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      DATABASE_URL: postgresql://social:social@localhost:5432/social?schema=public
+      DIRECT_URL: postgresql://social:social@localhost:5432/social?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Apply migrations to an empty database
+        run: npx prisma migrate deploy
+      - name: Check schema.prisma matches the migrations (no drift)
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - name: Load demo data
+        run: npm run seed:demo -- --yes
+
+      - name: Build the production image
+        run: docker build -t social-backend .
+      - name: Start the container
+        run: |
+          docker run -d --name api --network host \
+            -e DATABASE_URL -e DIRECT_URL \
+            -e JWT_SECRET=ci-jwt-secret -e COOKIE_SECRET=ci-cookie-secret \
+            -e DEV_ORIGIN=http://localhost:3000 -e PROD_ORIGIN=http://localhost:3000 \
+            social-backend
+          for i in $(seq 1 30); do
+            curl -fs http://localhost:4000/ping && exit 0
+            sleep 2
+          done
+          echo "API did not become ready" && exit 1
+      - name: Smoke test
+        run: node scripts/smoke.mjs
+        env:
+          BASE_URL: http://localhost:4000
+      - name: Container logs
+        if: failure()
+        run: docker logs api

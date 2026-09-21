@@ -1,0 +1,59 @@
+# Local stack: Postgres + migrations + API
+#
+#   docker compose up --build                                   start (migrates automatically)
+#   docker compose run --rm migrate npm run seed:demo -- --yes  load demo data
+#   open http://localhost:4000/docs                             login: demo@example.com / demo12345
+#   docker compose down -v                                      stop and delete the database
+
+x-db-env: &db-env
+  DATABASE_URL: postgresql://social:social@db:5432/social?schema=public
+  DIRECT_URL: postgresql://social:social@db:5432/social?schema=public
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: social
+      POSTGRES_PASSWORD: social
+      POSTGRES_DB: social
+    ports:
+      - '5435:5432' # host port 5435: keeps 5432-5434 free for other local Postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U social -d social']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Build stage image (has the Prisma CLI and tsx): applies migrations, runs seeds
+  migrate:
+    build:
+      context: .
+      target: build
+    command: npx prisma migrate deploy
+    environment:
+      <<: *db-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    ports:
+      - '4000:4000'
+    environment:
+      <<: *db-env
+      JWT_SECRET: local-dev-jwt-secret-change-me
+      COOKIE_SECRET: local-dev-cookie-secret-change-me
+      DEV_ORIGIN: http://localhost:3000
+      PROD_ORIGIN: http://localhost:3000
+      # Optional, only needed for emails and image uploads
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      IMAGEKIT_PRIVATE_KEY: ${IMAGEKIT_PRIVATE_KEY:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

@@ -22,11 +22,9 @@ const start = async () => {
     const PORT = Number(process.env.PORT)
     await app.listen({ port: PORT, host: '0.0.0.0' })
 
-    const NODE_ENV = process.env.NODE_ENV
+    // Render sets RENDER_EXTERNAL_URL automatically
     const baseUrl =
-      NODE_ENV === 'production'
-        ? `https://${process.env.RAILWAY_STATIC_URL} https://${process.env.RENDER_STATIC_URL}`
-        : `http://localhost:${PORT}`
+      process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${PORT}`
 
     app.log.info(`Server running at ${baseUrl}`)
   } catch (err) {

@@ -4,6 +4,7 @@ import {
   type FastifyReply,
 } from 'fastify'
 import { userErrorHandler } from '../userErrorHandler'
+import { followListQuerySchema } from '../userSchemas'
 
 interface AuthenticatedRequest extends FastifyRequest {
   user?: NonNullable<FastifyRequest['user']>
@@ -77,10 +78,9 @@ const getFollowingRoute: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        const { page = 1, limit = 20 } = request.query as {
-          page?: number
-          limit?: number
-        }
+        const query = followListQuerySchema.safeParse(request.query)
+        if (!query.success) throw query.error
+        const { page, limit } = query.data
         const skip = (page - 1) * limit
 
         const [following, totalCount] = await Promise.all([

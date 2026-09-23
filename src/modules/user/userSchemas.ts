@@ -136,3 +136,13 @@ export const listFollowRequestsSchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 })
+
+// Query strings arrive as strings; coerce before they reach Prisma's take/skip
+export const followListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+})
+
+export const suggestionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+})

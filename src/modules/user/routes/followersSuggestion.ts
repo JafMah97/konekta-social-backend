@@ -4,6 +4,7 @@ import {
   type FastifyReply,
 } from 'fastify'
 import { userErrorHandler } from '../userErrorHandler'
+import { suggestionsQuerySchema } from '../userSchemas'
 
 interface AuthenticatedRequest extends FastifyRequest {
   user: NonNullable<FastifyRequest['user']>
@@ -45,7 +46,9 @@ const suggestionsRoute: FastifyPluginAsync = async (fastify) => {
       const userId = req.user.id
 
       try {
-        const { limit = 10 } = request.query as { limit?: number }
+        const query = suggestionsQuerySchema.safeParse(request.query)
+        if (!query.success) throw query.error
+        const { limit } = query.data
 
         const mutualSuggestions = (await fastify.prisma.user.findMany({
           where: {

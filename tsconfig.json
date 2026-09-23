@@ -20,7 +20,7 @@
     "isolatedModules": true,
     "skipLibCheck": true
   },
-  "exclude": ["tsup.config.ts"],
+  "include": ["src"],
   "ts-node": {
     "compilerOptions": {
       "module": "ESNext"
